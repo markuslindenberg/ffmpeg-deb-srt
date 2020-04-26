@@ -20,7 +20,9 @@ jobs:
       DEBIAN_PRIORITY: critical
       DEBCONF_NOWARNINGS: yes
     steps:
-      - name: Prepare Build Environment
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Prepare build environment
         run: |
           echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
           echo 'APT::Get::Install-Recommends "false";\nAPT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/90norecommends
@@ -31,23 +33,29 @@ jobs:
           sed -i 's/^deb \(.*\)$/&\ndeb-src \1/' /etc/apt/sources.list
           apt-get update
           apt-get install build-essential devscripts equivs lsb-release quilt dh-autoreconf lintian aptly
-      - name: Get Source
+      - name: Get source
         run: |
           apt-get source ffmpeg
-      - name: Get Build Dependencies
+      - name: Patch source
         run: |
           cd ffmpeg-*
           sed -i 's/^Build-Depends:$/&\n libsrt-dev,\n libssl-dev,/' debian/control
           sed -i 's/^CONFIG :=.*$/&\n        --enable-libsrt \\/' debian/rules
+      - name: Get build dependencies
+        run: |
+          cd ffmpeg-*
           mk-build-deps -i -r debian/control
-      - name: Build Packages
+      - name: Build packages
         run: |
           cd ffmpeg-*
           debuild -us -uc -b
-      - name: Create Repository
+      - name: Create repository
         run: |  
-          aptly repo create -distribution=$(lsb_release -c -s) default
-          aptly repo add default .
-      - name: Publish Repository
+          aptly -config=$GITHUB_WORKSPACE/.aptly.conf repo create -distribution=$(lsb_release -c -s) default
+          aptly -config=$GITHUB_WORKSPACE/.aptly.conf repo add default .
+      - name: Publish repository
+        env:
+          AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.AWS_SECRET_ACCESS_KEY }}'
         run: |
-          aptly --skip-signing publish repo default
+          aptly -config=$GITHUB_WORKSPACE/.aptly.conf publish repo default s3:digitalocean:$(lsb_release -c -s)/

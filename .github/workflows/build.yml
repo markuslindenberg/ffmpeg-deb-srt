@@ -33,7 +33,7 @@ jobs:
           apt-get install build-essential devscripts equivs lsb-release quilt dh-autoreconf lintian aptly
           apt-get source ffmpeg
           cd ffmpeg-*
-          sed -i 's/^Build-Depends:$/&\n libsrt-dev (>= 1.4.0),/' debian/control
+          sed -i 's/^Build-Depends:$/&\n libsrt-dev,\n libssl-dev,/' debian/control
           sed -i 's/^CONFIG :=.*$/&\n        --enable-libsrt \\/' debian/rules
           mk-build-deps -i -r debian/control
           apt-get clean

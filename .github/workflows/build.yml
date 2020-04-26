@@ -15,6 +15,10 @@ jobs:
       fail-fast: false
     container:
       image: '${{ matrix.image }}'
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      DEBIAN_PRIORITY: critical
+      DEBCONF_NOWARNINGS: yes
     steps:
       - name: Build Packages
         run: |

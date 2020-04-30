@@ -12,6 +12,9 @@ jobs:
       matrix:
         image:
           - 'ubuntu:focal'
+        include:
+          - image: 'ubuntu:focal'
+            codename: 'focal'
       fail-fast: false
     container:
       image: '${{ matrix.image }}'
@@ -22,40 +25,63 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Prepare build environment
+      - name: Install build environment
         run: |
           echo 'APT::Get::Assume-Yes "true";' > /etc/apt/apt.conf.d/90assumeyes
           echo 'APT::Get::Install-Recommends "false";\nAPT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/90norecommends
-          apt-get update
-          apt-get install gnupg
-          apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C
-          echo 'deb http://repo.aptly.info/ squeeze main' > /etc/apt/sources.list.d/aptly.list
           sed -i 's/^deb \(.*\)$/&\ndeb-src \1/' /etc/apt/sources.list
           apt-get update
-          apt-get install build-essential devscripts equivs lsb-release quilt dh-autoreconf lintian aptly
+          apt-get install build-essential devscripts equivs quilt dh-autoreconf lintian gnupg lsb-release curl
+      - name: Install aptly
+        run: |
+          apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C
+          echo 'deb http://repo.aptly.info/ squeeze main' > /etc/apt/sources.list.d/aptly.list
+          apt-get update
+          apt-get install aptly
+      - name: Install minio client
+        run: |
+          curl https://dl.min.io/client/mc/release/linux-amd64/mc > /usr/local/bin/mc
+          chmod a+x /usr/local/bin/mc
       - name: Get source
         run: |
           apt-get source ffmpeg
       - name: Patch source
         run: |
-          cd ffmpeg-*
+          cd ffmpeg-*/
           sed -i 's/^Build-Depends:$/&\n libsrt-dev,\n libssl-dev,/' debian/control
           sed -i 's/^CONFIG :=.*$/&\n        --enable-libsrt \\/' debian/rules
+          dch --local +srt 'Rebuilt with SRT support by https://github.com/markuslindenberg/ffmpeg-deb-srt/'
+          dch --release ''
       - name: Get build dependencies
         run: |
-          cd ffmpeg-*
-          mk-build-deps -i -r debian/control
+          mk-build-deps -i -r ffmpeg-*/debian/control
       - name: Build packages
         run: |
-          cd ffmpeg-*
+          cd ffmpeg-*/
           debuild -us -uc -b
       - name: Create repository
-        run: |  
+        run: |
           aptly -config=$GITHUB_WORKSPACE/.aptly.conf repo create -distribution=$(lsb_release -c -s) default
           aptly -config=$GITHUB_WORKSPACE/.aptly.conf repo add default .
+      - name: Sign repository
+        env:
+          SIGNING_KEY: '${{ secrets.SIGNING_KEY }}'
+          GNUPGHOME: ' ${{ github.workspace }}/gnupg'
+        run: |
+          mkdir -p "$GNUPGHOME"
+          gpg --batch --no-tty --import pubkey.gpg
+          echo "$SIGNING_KEY" | gpg --batch --no-tty --import
+          gpg --batch --no-tty --list-keys --with-colons | awk -F : '/^uid/ { print "default-key " $8 }' > $GNUPGHOME/gpg.conf
+          aptly -config=$GITHUB_WORKSPACE/.aptly.conf publish repo default
+          rm -rf "$GNUPGHOME"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: '${{ matrix.codename }}'
+          path: 'aptly/public'
       - name: Publish repository
         env:
-          AWS_ACCESS_KEY_ID: '${{ secrets.AWS_ACCESS_KEY_ID }}'
-          AWS_SECRET_ACCESS_KEY: '${{ secrets.AWS_SECRET_ACCESS_KEY }}'
+          MC_HOST_repo: 'https://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.S3_ENDPOINT }}'
         run: |
-          aptly -config=$GITHUB_WORKSPACE/.aptly.conf publish repo default s3:digitalocean:$(lsb_release -c -s)/
+          mc rm --recursive --force repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
+          mc cp --recursive aptly/public/ repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}

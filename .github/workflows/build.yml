@@ -92,6 +92,7 @@ jobs:
           GNUPGHOME: ' ${{ github.workspace }}/gnupg'
         run: |
           mkdir -p "$GNUPGHOME"
+          gpg-agent --daemon
           gpg --batch --no-tty --import pubkey.gpg
           echo "$SIGNING_KEY" | gpg --batch --no-tty --import
           gpg --batch --no-tty --list-keys --with-colons | awk -F : '/^uid/ { print "default-key " $8 }' > $GNUPGHOME/gpg.conf

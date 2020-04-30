@@ -46,11 +46,11 @@ jobs:
       - name: Get srt source
         if: ${{ matrix.codename == 'buster' }}
         run: |
-          cat /etc/apt/sources.list | grep -v debian-security | sed 's/buster/bullseye/' > /etc/apt/sources.list.bullseye
-          cat /etc/apt/sources.list.bullseye >> /etc/apt/sources.list
-          echo 'Package: *\nPin: release a=testing\nPin-Priority: 100' > /etc/apt/preferences.d/testing.pref
+          cat /etc/apt/sources.list | grep -v debian-security | sed 's/buster/bullseye/' > /etc/apt/sources.list.d/bullseye.list
           apt-get update
           apt-get -t bullseye source srt
+          rm -f /etc/apt/sources.list.d/bullseye.list
+          apt-get update
       - name: Get src build dependencies
         if: ${{ matrix.codename == 'buster' }}
         run: |
@@ -67,7 +67,7 @@ jobs:
           dpkg -i *.deb
       - name: Get ffmpeg source
         run: |
-          apt-get source ffmpeg
+          apt-get -t $(lsb_release -c -s) source ffmpeg
       - name: Patch ffmpeg
         run: |
           cd ffmpeg-*/

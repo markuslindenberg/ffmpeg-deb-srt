@@ -10,11 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        image:
-          - 'ubuntu:focal'
+        codename: ['focal', 'buster']
         include:
-          - image: 'ubuntu:focal'
-            codename: 'focal'
+          - codename: 'focal'
+            image: 'ubuntu:focal'
+          - codename: 'buster'
+            image: 'debian:buster'
       fail-fast: false
     container:
       image: '${{ matrix.image }}'
@@ -31,10 +32,10 @@ jobs:
           echo 'APT::Get::Install-Recommends "false";\nAPT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/90norecommends
           sed -i 's/^deb \(.*\)$/&\ndeb-src \1/' /etc/apt/sources.list
           apt-get update
-          apt-get install build-essential devscripts equivs quilt dh-autoreconf lintian gnupg lsb-release curl
+          apt-get install build-essential devscripts lintian gnupg lsb-release curl
       - name: Install aptly
         run: |
-          apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C
+          curl https://www.aptly.info/pubkey.txt | apt-key add -
           echo 'deb http://repo.aptly.info/ squeeze main' > /etc/apt/sources.list.d/aptly.list
           apt-get update
           apt-get install aptly
@@ -42,20 +43,42 @@ jobs:
         run: |
           curl https://dl.min.io/client/mc/release/linux-amd64/mc > /usr/local/bin/mc
           chmod a+x /usr/local/bin/mc
-      - name: Get source
+      - name: Get srt source
+        if: ${{ matrix.codename == 'buster' }}
+        run: |
+          cat /etc/apt/sources.list | grep -v debian-security | sed 's/buster/bullseye/' > /etc/apt/sources.list.bullseye
+          cat /etc/apt/sources.list.bullseye >> /etc/apt/sources.list
+          echo -e "Package: *\nPin: release a=testing\nPin-Priority: 100" > /etc/apt/preferences.d/testing.pref
+          apt-get update
+          apt-get -t bullseye source srt
+      - name: Get src build dependencies
+        if: ${{ matrix.codename == 'buster' }}
+        run: |
+          mk-build-deps -i -r srt-*/debian/control
+      - name: Build srt
+        if: ${{ matrix.codename == 'buster' }}
+        run: |
+          mk-build-deps -i -r srt-*/debian/control
+          cd srt-*/
+          debuild -us -uc -b
+      - name: Install srt
+        if: ${{ matrix.codename == 'buster' }}
+        run: |
+          dpkg -i *.deb
+      - name: Get ffmpeg source
         run: |
           apt-get source ffmpeg
-      - name: Patch source
+      - name: Patch ffmpeg
         run: |
           cd ffmpeg-*/
           sed -i 's/^Build-Depends:$/&\n libsrt-dev,\n libssl-dev,/' debian/control
           sed -i 's/^CONFIG :=.*$/&\n        --enable-libsrt \\/' debian/rules
           dch --local +srt 'Rebuilt with SRT support by https://github.com/markuslindenberg/ffmpeg-deb-srt/'
           dch --release ''
-      - name: Get build dependencies
+      - name: Get ffmpeg build dependencies
         run: |
           mk-build-deps -i -r ffmpeg-*/debian/control
-      - name: Build packages
+      - name: Build ffmpeg
         run: |
           cd ffmpeg-*/
           debuild -us -uc -b

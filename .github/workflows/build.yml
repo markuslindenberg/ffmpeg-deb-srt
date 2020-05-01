@@ -32,13 +32,13 @@ jobs:
           echo 'APT::Get::Install-Recommends "false";\nAPT::Get::Install-Suggests "false";' > /etc/apt/apt.conf.d/90norecommends
           sed -i 's/^deb \(.*\)$/&\ndeb-src \1/' /etc/apt/sources.list
           apt-get update
-          apt-get install build-essential devscripts equivs lintian gnupg gnupg1 gpgv1 lsb-release curl
+          apt-get install build-essential devscripts equivs lintian gnupg lsb-release curl
       - name: Install aptly
         run: |
           curl https://www.aptly.info/pubkey.txt | apt-key add -
           echo 'deb http://repo.aptly.info/ squeeze main' > /etc/apt/sources.list.d/aptly.list
           apt-get update
-          apt-get install aptly
+          apt-get install aptly gnupg1 gpgv1
           mkdir -p $GITHUB_WORKSPACE/aptly
           ln -s $GITHUB_WORKSPACE/aptly $HOME/.aptly
       - name: Install minio client
@@ -53,14 +53,13 @@ jobs:
           apt-get -t bullseye source srt
           rm -f /etc/apt/sources.list.d/bullseye.list
           apt-get update
-      - name: Get src build dependencies
+      - name: Get srt build dependencies
         if: ${{ matrix.codename == 'buster' }}
         run: |
           mk-build-deps -i -r srt-*/debian/control
       - name: Build srt
         if: ${{ matrix.codename == 'buster' }}
         run: |
-          mk-build-deps -i -r srt-*/debian/control
           cd srt-*/
           debuild -us -uc -b
       - name: Install srt
@@ -69,7 +68,7 @@ jobs:
           dpkg -i *.deb
       - name: Get ffmpeg source
         run: |
-          apt-get -t $(lsb_release -c -s) source ffmpeg
+          apt-get source ffmpeg
       - name: Patch ffmpeg
         run: |
           cd ffmpeg-*/
@@ -85,28 +84,24 @@ jobs:
           cd ffmpeg-*/
           debuild -us -uc -b
       - name: Create repository
-        run: |
-          aptly -gpg-provider=gpg1 repo create -distribution=$(lsb_release -c -s) default
-          aptly -gpg-provider=gpg1 repo add default .
-      - name: Sign repository
         env:
           SIGNING_KEY: '${{ secrets.SIGNING_KEY }}'
           GNUPGHOME: ' ${{ github.workspace }}/gnupg'
         run: |
-          mkdir -p "$GNUPGHOME"
-          gpg1 --batch --no-tty --import pubkey.gpg
-          echo "$SIGNING_KEY" | gpg1 --batch --no-tty --import
-          gpg1 --batch --no-tty --list-keys --with-colons | awk -F : '/^uid/ { print "default-key " $8 }' > $GNUPGHOME/gpg.conf
+          mkdir -m 0700 -p "$GNUPGHOME"
+          echo "$(cat pubkey.gpg)" "$SIGNING_KEY" | gpg1 --batch --no-tty --import
+          aptly -gpg-provider=gpg1 repo create -distribution=$(lsb_release -c -s) default
+          aptly -gpg-provider=gpg1 repo add default .
           aptly -gpg-provider=gpg1 publish repo default
           rm -rf "$GNUPGHOME"
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: '${{ matrix.codename }}'
+          path: 'aptly/public'
       - name: Publish repository
         env:
           MC_HOST_repo: 'https://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.S3_ENDPOINT }}'
         run: |
           mc rm --recursive --force repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
           mc cp --recursive aptly/public/ repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v1
-        with:
-          name: '${{ matrix.codename }}'
-          path: 'aptly/public'

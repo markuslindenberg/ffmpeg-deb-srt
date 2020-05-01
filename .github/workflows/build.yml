@@ -101,10 +101,10 @@ jobs:
         uses: actions/upload-artifact@v1
         with:
           name: '${{ matrix.codename }}'
-          path: 'aptly/public'
+          path: '${{ github.workspace }}/aptly/public'
       - name: Publish repository
         env:
           MC_HOST_repo: 'https://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.S3_ENDPOINT }}'
         run: |
           mc rm --recursive --force repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
-          mc cp --recursive aptly/public/ repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
+          mc cp --recursive $GITHUB_WORKSPACE/aptly/public/ repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}

@@ -39,6 +39,8 @@ jobs:
           echo 'deb http://repo.aptly.info/ squeeze main' > /etc/apt/sources.list.d/aptly.list
           apt-get update
           apt-get install aptly
+          mkdir -p $GITHUB_WORKSPACE/aptly
+          ln -s $GITHUB_WORKSPACE/aptly $HOME/.aptly
       - name: Install minio client
         run: |
           curl https://dl.min.io/client/mc/release/linux-amd64/mc > /usr/local/bin/mc
@@ -84,8 +86,8 @@ jobs:
           debuild -us -uc -b
       - name: Create repository
         run: |
-          aptly -config=$GITHUB_WORKSPACE/.aptly.conf repo create -distribution=$(lsb_release -c -s) default
-          aptly -config=$GITHUB_WORKSPACE/.aptly.conf repo add default .
+          aptly -gpg-provider=gpg1 repo create -distribution=$(lsb_release -c -s) default
+          aptly -gpg-provider=gpg1 repo add default .
       - name: Sign repository
         env:
           SIGNING_KEY: '${{ secrets.SIGNING_KEY }}'
@@ -95,16 +97,16 @@ jobs:
           gpg1 --batch --no-tty --import pubkey.gpg
           echo "$SIGNING_KEY" | gpg1 --batch --no-tty --import
           gpg1 --batch --no-tty --list-keys --with-colons | awk -F : '/^uid/ { print "default-key " $8 }' > $GNUPGHOME/gpg.conf
-          aptly -config=$GITHUB_WORKSPACE/.aptly.conf publish repo default
+          aptly -gpg-provider=gpg1 publish repo default
           rm -rf "$GNUPGHOME"
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v1
-        with:
-          name: '${{ matrix.codename }}'
-          path: '${{ github.workspace }}/aptly/public'
       - name: Publish repository
         env:
           MC_HOST_repo: 'https://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.S3_ENDPOINT }}'
         run: |
           mc rm --recursive --force repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
-          mc cp --recursive $GITHUB_WORKSPACE/aptly/public/ repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
+          mc cp --recursive aptly/public/ repo/${{ secrets.S3_BUCKET }}/${{ matrix.codename }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: '${{ matrix.codename }}'
+          path: 'aptly/public'

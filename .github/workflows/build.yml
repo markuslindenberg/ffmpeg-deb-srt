@@ -38,7 +38,7 @@ jobs:
           export UPSTREAM_VERSION="$(apt-cache --no-all-versions show ffmpeg | awk '/^Version/ { print $2 }')"
           apt-get -y install --no-install-recommends ca-certificates apt-transport-https gnupg1 gpgv1
           apt-key add pubkey.gpg
-          echo "$REPO ${{ matrix.codename }} main" > /etc/apt/sources.list.d/ffmpeg-srt.list
+          echo "deb $REPO ${{ matrix.codename }} main" > /etc/apt/sources.list.d/ffmpeg-srt.list
           apt-get update
           export SRT_VERSION="$(apt-cache madison ffmpeg | awk '{ if ($5 == ENVIRON[\"REPO\"]) { print $3 } }')"
           rm -f /etc/apt/sources.list.d/ffmpeg-srt.list

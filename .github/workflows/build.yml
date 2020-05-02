@@ -40,7 +40,7 @@ jobs:
           apt-key add pubkey.gpg
           echo "deb $REPO ${{ matrix.codename }} main" > /etc/apt/sources.list.d/ffmpeg-srt.list
           apt-get update
-          export SRT_VERSION="$(apt-cache madison ffmpeg | awk '{ if ($5 == ENVIRON[\"REPO\"]) { print $3 } }')"
+          export SRT_VERSION="$(apt-cache madison ffmpeg | awk '{ if ($5 == ENVIRON["REPO"]) { print $3 } }')"
           rm -f /etc/apt/sources.list.d/ffmpeg-srt.list
           dpkg --compare-versions "$SRT_VERSION" gt "$UPSTREAM_VERSION"
       - name: Install build environment
